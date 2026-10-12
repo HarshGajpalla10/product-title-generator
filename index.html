@@ -1,1 +1,230 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Product Title Generator</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 24px 16px;
+      background: #f4f6fb;
+      color: #172033;
+      font: 16px/1.5 Arial, sans-serif;
+    }
+
+    main {
+      max-width: 680px;
+      margin: 35px auto;
+      padding: 28px;
+      background: white;
+      border: 1px solid #e0e5ef;
+      border-radius: 14px;
+    }
+
+    h1 { margin: 0 0 8px; font-size: 26px; }
+    .intro { color: #667085; margin-bottom: 24px; }
+
+    label {
+      display: block;
+      margin: 18px 0 7px;
+      font-weight: bold;
+    }
+
+    input, textarea {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #cbd2e0;
+      border-radius: 8px;
+      font: inherit;
+    }
+
+    textarea { min-height: 125px; resize: vertical; }
+
+    button {
+      padding: 12px 16px;
+      border: 0;
+      border-radius: 8px;
+      font: inherit;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #generate {
+      width: 100%;
+      margin-top: 20px;
+      color: white;
+      background: #3157d5;
+    }
+
+    button:disabled { opacity: 0.6; cursor: wait; }
+
+    #result {
+      margin-top: 25px;
+      padding-top: 20px;
+      border-top: 1px solid #e0e5ef;
+    }
+
+    #title {
+      margin: 10px 0;
+      overflow-wrap: anywhere;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    #copy { background: #e9edf8; color: #172033; }
+    #status { margin-top: 14px; color: #667085; }
+    .error { color: #b42318 !important; }
+    .success { color: #067647 !important; }
+    .hidden { display: none; }
+    .small { color: #667085; font-size: 13px; }
+
+    @media (max-width: 480px) {
+      main { padding: 20px; margin: 10px auto; }
+      h1 { font-size: 23px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Product Title Generator</h1>
+    <p class="intro">
+      Generate a clean, descriptive e-commerce title from your
+      product name and specifications.
+    </p>
+
+    <form id="titleForm">
+      <label for="productName">Product Name</label>
+      <input
+        id="productName"
+        maxlength="300"
+        required
+        placeholder="e.g. LED Bulb 12W Philips"
+      >
+
+      <label for="specifications">Product Specifications</label>
+      <textarea
+        id="specifications"
+        maxlength="4000"
+        required
+        placeholder="e.g. Philips LED bulb, 12 watt, cool white"
+      ></textarea>
+
+      <button id="generate" type="submit">Generate Title</button>
+    </form>
+
+    <div id="status" role="status" aria-live="polite"></div>
+
+    <section id="result" class="hidden">
+      <label>Generated Product Title</label>
+      <div id="title"></div>
+      <button id="copy" type="button">Copy Title</button>
+      <p id="count" class="small"></p>
+    </section>
+
+    <p class="small">
+      Review the generated title for accuracy before publishing.
+    </p>
+  </main>
+
+  <script>
+    // Replace this after deploying your Cloudflare Worker.
+    const API_URL = "PASTE_YOUR_CLOUDFLARE_WORKER_URL_HERE";
+
+    const form = document.getElementById("titleForm");
+    const generateButton = document.getElementById("generate");
+    const status = document.getElementById("status");
+    const result = document.getElementById("result");
+    const titleOutput = document.getElementById("title");
+    const count = document.getElementById("count");
+
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+
+      const product = document.getElementById("productName")
+        .value.trim();
+      const specs = document.getElementById("specifications")
+        .value.trim();
+
+      result.classList.add("hidden");
+      status.className = "";
+
+      if (!product || !specs) {
+        status.textContent =
+          "Please enter both the product name and specifications.";
+        status.className = "error";
+        return;
+      }
+
+      if (API_URL.includes("PASTE_YOUR")) {
+        status.textContent =
+          "Backend not connected yet. We will configure it next.";
+        status.className = "error";
+        return;
+      }
+
+      generateButton.disabled = true;
+      generateButton.textContent = "Generating...";
+      status.textContent = "Generating your title...";
+
+      try {
+        const response = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ product, specs })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Title generation failed.");
+        }
+
+        if (data.needsClarification) {
+          throw new Error(
+            data.message || "Please clarify conflicting specifications."
+          );
+        }
+
+        if (!data.title) {
+          throw new Error("No title was returned. Please try again.");
+        }
+
+        // Use textContent so generated text is not interpreted as HTML.
+        titleOutput.textContent = data.title;
+        count.textContent = data.title.length + " characters";
+        result.classList.remove("hidden");
+
+        status.textContent = "Title generated successfully.";
+        status.className = "success";
+      } catch (error) {
+        status.textContent =
+          error.message || "Connection error. Please try again.";
+        status.className = "error";
+      } finally {
+        generateButton.disabled = false;
+        generateButton.textContent = "Generate Title";
+      }
+    });
+
+    document.getElementById("copy").addEventListener(
+      "click", async function () {
+        try {
+          await navigator.clipboard.writeText(titleOutput.textContent);
+          this.textContent = "Copied!";
+          setTimeout(() => this.textContent = "Copy Title", 1500);
+        } catch {
+          status.textContent =
+            "Copy unavailable. Please select and copy the title manually.";
+          status.className = "error";
+        }
+      }
+    );
+  </script>
+</body>
+</html>
+
